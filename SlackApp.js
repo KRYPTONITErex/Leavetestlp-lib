@@ -122,25 +122,25 @@ function buildApprovalMessage(approvalStatus, name, leaveFrom, leaveTo, reason, 
 
 function getSlackUserId(informedTo) {
   try {
-      const options = {
-          method: "get",
-          headers: {
-              Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-          },
-      };
-      const response = UrlFetchApp.fetch(`${USER_LIST_URL}`, options);
-      const users = JSON.parse(response).members;
-      const user = users.filter((u) => !u.deleted).find(u => u.real_name === informedTo);
-      if (user) {
-          Logger.log(`User found - ${user.real_name}, ID: ${user.id}`);
-          return user.id;
-      } else {
-          Logger.log(`User not found for ${informedTo}`);
-          return null;
-      }
+    const options = {
+      method: "get",
+      headers: {
+        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      },
+    };
+    const response = UrlFetchApp.fetch(`${USER_LIST_URL}`, options);
+    const users = JSON.parse(response).members;
+    const user = users.filter((u) => !u.deleted).find(u => u.real_name === informedTo);
+    if (user) {
+      Logger.log(`User found - ${user.real_name}, ID: ${user.id}`);
+      return user.id;
+    } else {
+      Logger.log(`User not found for ${informedTo}`);
+      return null;
+    }
   } catch (err) {
-      Logger.log(`getSlackUserId Error: ${err}`);
-      return null;  // Return null if an exception occurs
+    Logger.log(`getSlackUserId Error: ${err}`);
+    return null; 
   }
 }
 
@@ -151,7 +151,6 @@ function getSlackUserIdByEmail(email) {
   }
   
   try {
-    // Fixed URL formatting - removed the quotes around the URL
     const url = `${LOOK_UP_BY_EMAIL_URL}?email=${encodeURIComponent(email)}`;
     logToSheet(`Looking up Slack user ID for email: ${email}`);
     
@@ -190,8 +189,8 @@ function sendToSlackApp(message) {
     contentType: 'application/json',
     payload: JSON.stringify({
       channel: SLACK_CHANNEL,
-      text: message, // Plaintext fallback
-      blocks: message.blocks // Optional interactive blocks
+      text: message, 
+      blocks: message.blocks
     }),
     headers: {
       Authorization: `Bearer ${SLACK_BOT_TOKEN}`

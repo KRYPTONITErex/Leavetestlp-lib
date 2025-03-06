@@ -82,8 +82,7 @@ function onEdit(e) {
 
 function checkSlackConfig() {
   const props = PropertiesService.getScriptProperties().getProperties();
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Logs") || 
-                SpreadsheetApp.getActiveSpreadsheet().insertSheet("Logs");
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Logs") || SpreadsheetApp.getActiveSpreadsheet().insertSheet("Logs");
   
   sheet.appendRow(["Timestamp", "Config Check"]);
   
@@ -100,6 +99,8 @@ function checkSlackConfig() {
 }
 
 
+
+
 function fixScriptProperties() {
   const scriptProperties = PropertiesService.getScriptProperties();
   const currentProps = scriptProperties.getProperties();
@@ -109,9 +110,7 @@ function fixScriptProperties() {
   for (const [key, value] of Object.entries(currentProps)) {
     if (key.includes('URL') || key.includes('TOKEN')) {
       // Mask tokens for security
-      const maskedValue = value.startsWith('xoxb-') ? 
-                         value.substring(0, 10) + '...' : 
-                         value;
+      const maskedValue = value.startsWith('xoxb-') ? value.substring(0, 10) + '...' : value;
       logToSheet(`${key}: ${maskedValue}`);
     }
   }
@@ -125,23 +124,20 @@ function fixScriptProperties() {
   }
   
   // Fix other URL properties if needed
-  if (currentProps.USER_LIST_URL && 
-      currentProps.USER_LIST_URL.includes('"')) {
+  if (currentProps.USER_LIST_URL && currentProps.USER_LIST_URL.includes('"')) {
     const fixedValue = currentProps.USER_LIST_URL.replace(/"/g, '');
     scriptProperties.setProperty('USER_LIST_URL', fixedValue);
     logToSheet(`Fixed USER_LIST_URL: ${fixedValue}`);
   }
   
-  if (currentProps.POST_MSG_URL && 
-      currentProps.POST_MSG_URL.includes('"')) {
+  if (currentProps.POST_MSG_URL && currentProps.POST_MSG_URL.includes('"')) {
     const fixedValue = currentProps.POST_MSG_URL.replace(/"/g, '');
     scriptProperties.setProperty('POST_MSG_URL', fixedValue);
     logToSheet(`Fixed POST_MSG_URL: ${fixedValue}`);
   }
   
   // Verify SLACK_BOT_TOKEN format
-  if (currentProps.SLACK_BOT_TOKEN && 
-      !currentProps.SLACK_BOT_TOKEN.startsWith('xoxb-')) {
+  if (currentProps.SLACK_BOT_TOKEN && !currentProps.SLACK_BOT_TOKEN.startsWith('xoxb-')) {
     logToSheet(`Warning: SLACK_BOT_TOKEN may have an incorrect format. Tokens usually start with 'xoxb-'`);
   }
   
