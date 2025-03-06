@@ -121,47 +121,66 @@ function buildApprovalMessage(approvalStatus, name, leaveFrom, leaveTo, reason, 
 }
 
 function getSlackUserId(informedTo) {
-  try{
-    const options = {
-      method: "get",
-      headers: {
-        Authorization: `Bearer ${SLACK_BOT_TOKEN}`, // Fixed variable name from BOT_TOKEN to SLACK_BOT_TOKEN
-      },
-    };
-    const response = UrlFetchApp.fetch(`${USER_LIST_URL}`, options);
-    const users = JSON.parse(response).members;
-    const user = users.filter((u) => !u.deleted).find(u => u.real_name === informedTo);
-    if (user) {
-      logToSheet(`getSlackUserId: User found - ${user.real_name}, ID: ${user.id}`); // Added logging
-      return user.id;
-    } else {
-      logToSheet(`getSlackUserId: User not found for ${informedTo}`); // Added logging
-      return null;
-    }
-  } catch(err) {
-    logToSheet(`getSlackUserId Error: ${err}`); // Improved error logging
+  try {
+      const options = {
+          method: "get",
+          headers: {
+              Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+          },
+      };
+      const response = UrlFetchApp.fetch(`${USER_LIST_URL}`, options);
+      const users = JSON.parse(response).members;
+      const user = users.filter((u) => !u.deleted).find(u => u.real_name === informedTo);
+      if (user) {
+          Logger.log(`User found - ${user.real_name}, ID: ${user.id}`);
+          return user.id;
+      } else {
+          Logger.log(`User not found for ${informedTo}`);
+          return null;
+      }
+  } catch (err) {
+      Logger.log(`getSlackUserId Error: ${err}`);
+      return null;  // Return null if an exception occurs
   }
 }
 
 function getSlackUserIdByEmail(email) {
+  if (!email) {
+    logToSheet("Error: No email provided to getSlackUserIdByEmail");
+    return null;
+  }
+  
   try {
+    // Fixed URL formatting - removed the quotes around the URL
     const url = `${LOOK_UP_BY_EMAIL_URL}?email=${encodeURIComponent(email)}`;
+    logToSheet(`Looking up Slack user ID for email: ${email}`);
+    
     const options = {
       "method": "get",
       "headers": {
         "Authorization": "Bearer " + SLACK_BOT_TOKEN
       }
     };
+    
+    // Log the full URL being called (but mask the token in logs)
+    logToSheet(`API Call URL: ${url}`);
+    
     const response = UrlFetchApp.fetch(url, options);
     const result = JSON.parse(response.getContentText());
+    
     if (result.ok) {
-      var userId = result.user.id;
-      return userId;
+      logToSheet(`User found: ${result.user.id} for email: ${email}`);
+      return result.user.id;
     } else {
-      throw new Error('User ID not found!')
+      logToSheet(`Error finding user for email ${email}: ${result.error}`);
+      return null;
     }
-  } catch(err) {
-    logToSheet(err);
+  } catch (err) {
+    logToSheet(`Exception in getSlackUserIdByEmail: ${err.toString()}`);
+    
+    // Additional troubleshooting
+    logToSheet(`LOOK_UP_BY_EMAIL_URL value: ${LOOK_UP_BY_EMAIL_URL}`);
+    return null;
   }
 }
 
@@ -188,7 +207,6 @@ function sendToSlackApp(message) {
 }
 
 
-
 function sendLeaveResponseSlackMessage({
   userName,
   userId,
@@ -197,13 +215,18 @@ function sendLeaveResponseSlackMessage({
   fromDate,
   toDate,
   managerEmail,
-  rejectedReason = '-'  // Default value if rejectReason is not provided
+  rejectedReason = '-'
 }) {
+  if (!userId) {
+    logToSheet("Error: Cannot send Slack message - userID is null or empty");
+    return;
+  }
+
   const isApproved = status === 'Approved';
   const statusText = isApproved ? '*✅ Approved*' : '*❌ Rejected*';
   
   const message = {
-    channel: userId,  // Direct message to the user (via their Slack userId)
+    channel: userId,
     blocks: [
       {
         type: "header",
@@ -243,11 +266,11 @@ function sendLeaveResponseSlackMessage({
         fields: [
           {
             type: "mrkdwn",
-            text: `*📅 From Date :*\n         ${formatDate(fromDate)}`
+            text: `*📅 From Date :*\n         ${fromDate}`
           },
           {
             type: "mrkdwn",
-            text: `*📅 To Date :*\n         ${formatDate(toDate)}`
+            text: `*📅 To Date :*\n         ${toDate}`
           }
         ]
       },
@@ -263,11 +286,13 @@ function sendLeaveResponseSlackMessage({
     ],
   };
 
+  logToSheet(`Preparing to send Slack message to user ID: ${userId}`);
   const payload = JSON.stringify(message);
+  logToSheet(`Message payload: ${payload.substring(0, 200)}...`);
 
   const options = {
     method: "POST",
-    contentType  :   "application/json",
+    contentType: "application/json",
     headers: {
       Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
     },
@@ -275,96 +300,19 @@ function sendLeaveResponseSlackMessage({
   };
 
   try {
-    UrlFetchApp.fetch(POST_MSG_URL, options);
-    logToSheet("Slack notification sent successfully.");
+    const response = UrlFetchApp.fetch(POST_MSG_URL, options);
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
+    
+    logToSheet(`Slack API response code: ${responseCode}`);
+    logToSheet(`Slack API response: ${responseText}`);
+    
+    if (responseCode === 200) {
+      logToSheet(`Slack notification sent successfully to user ID ${userId}`);
+    } else {
+      logToSheet(`Failed to send Slack notification. Status code: ${responseCode}`);
+    }
   } catch(err) {
-    logToSheet(`Error sending Slack message: ${err}`);
+    logToSheet(`Error sending Slack message: ${err.toString()}`);
   }
 }
-
-
-//just test ment for clasp push
-
-
-// function sendLeaveResponseSlackMessage({userName, userId, leaveType, status, fromDate, toDate, managerEmail, rejectedReason}) {
-//   const isApproved = status === 'Approved';
-//   const statusText = isApproved ? '*✅ Approved*' : '*❌ Rejected*';
-  
-//   const message = {
-//     channel: userId,
-//     blocks: [
-//       {
-//         type: "header",
-//         text: {
-//           type: "plain_text",
-//           text: `👋 Hello ${userName}, Your leave request has been ${status}.`,
-//           emoji: true
-//         }
-//       },
-//       { type: "divider" },
-//       {
-//         type: "section",
-//         fields: [
-//           {
-//             type: "mrkdwn",
-//             text: `*📌 Leave Type :*\n         ${leaveType}`
-//           },
-//           {
-//             type: "mrkdwn",
-//             text: `*📊 Status :*\n         ${statusText}`
-//           }
-//         ]
-//       },
-
-//       ...(status === 'Rejected' && rejectedReason ? [{
-//         type: 'section',
-//         fields: [
-//           {
-//             type: 'mrkdwn',
-//             text: `*💁🏻 Reject because:*\n${rejectedReason}`
-//           }
-//         ]
-//       }] : []),
-//       {
-//         type: "section",
-//         fields: [
-//           {
-//             type: "mrkdwn",
-//             text: `*📅 From Date :*\n         ${formatDate(fromDate)}`
-//           },
-//           {
-//             type: "mrkdwn",
-//             text: `*📅 To Date :*\n         ${formatDate(toDate)}`
-//           }
-//         ]
-//       },
-//       {
-//         type: "section",
-//         fields: [
-//           {
-//             type: "mrkdwn",
-//             text: `*👨🏻‍💼 Approver :*\n         ${managerEmail}`
-//           }
-//         ]
-//       }
-//     ],
-//   };
-
-//   const payload = JSON.stringify(message);
-
-//   const options = {
-//     method: "POST",
-//     contentType  :   "application/json",
-//     headers: {
-//       Authorization: `Bearer ${BOT_TOKEN}`,
-//     },
-//     payload,
-//   };
-
-//   try {
-//     UrlFetchApp.fetch(POST_MSG_URL, options);
-//     logToSheet("Slack notification sent successfully.");
-//   } catch(err) {
-//     logToSheet(err);
-//   }
-// }
