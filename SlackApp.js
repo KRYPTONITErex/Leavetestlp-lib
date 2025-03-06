@@ -10,11 +10,20 @@ function buildLeaveRequestMessage(values) {
   const reason = values[8];
   const attachedFile = values[10] || 'No file attached';
 
-
+  // Get the Slack user ID of the person being informed
+  const informedToUserId = getSlackUserId(informedTo);
+  
   const spreadsheetUrl = SpreadsheetApp.getActiveSpreadsheet().getUrl();
 
   const message = {
     blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `Hello <@${informedToUserId || informedTo}>, I'd like to request leave for the following days.`
+        }
+      },
       {
         type: 'header',
         text: {
