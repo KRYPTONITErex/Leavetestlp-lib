@@ -1,3 +1,5 @@
+// Slack.gs
+
 function buildLeaveRequestMessage(values) {
   const timestamp = formatTimestamp(values[0]);
   const email = values[1];
@@ -9,13 +11,11 @@ function buildLeaveRequestMessage(values) {
   const totalLeave = values[7];
   const reason = values[8];
   const attachedFile = values[10] || 'No file attached';
-
-  // Get the Slack user ID of the person being informed
-  const informedToUserId = getSlackUserId(informedTo);
   
+  const informedToUserId = getSlackUserId(informedTo);
   const spreadsheetUrl = SpreadsheetApp.getActiveSpreadsheet().getUrl();
-
-  const message = {
+  
+  return {
     blocks: [
       {
         type: "section",
@@ -80,15 +80,16 @@ function buildLeaveRequestMessage(values) {
       }
     ]
   };
-
-  return message;
 }
 
 function buildApprovalMessage(approvalStatus, name, leaveFrom, leaveTo, reason, rejectReason, timestamp) {
   const isApproved = approvalStatus === 'Approved';
   const statusText = isApproved ? '*✅ Approved*' : '*❌ Rejected*';
-
-  const message = {
+  
+  const rejectField = !isApproved && rejectReason ? 
+    [{ type: 'mrkdwn', text: `*💁🏻 Reject because:*\n${rejectReason}` }] : [];
+  
+  return {
     blocks: [
       {
         type: 'header',
@@ -112,10 +113,8 @@ function buildApprovalMessage(approvalStatus, name, leaveFrom, leaveTo, reason, 
       {
         type: 'section',
         fields: [
-        { type: 'mrkdwn', text: `*📝 Reason:*\n>${reason}` },
-        ...(approvalStatus === 'Rejected' && rejectReason
-        ? [{ type: 'mrkdwn', text: `*💁🏻 Reject because:*\n${rejectReason}` }]
-        : [])
+          { type: 'mrkdwn', text: `*📝 Reason:*\n>${reason}` },
+          ...rejectField
         ]
       },
       { type: 'divider' },
@@ -125,8 +124,86 @@ function buildApprovalMessage(approvalStatus, name, leaveFrom, leaveTo, reason, 
       },
     ]
   };
+}
 
-  return message;
+function sendLeaveResponseSlackMessage({ userName, userId, leaveType, status, fromDate, toDate, managerEmail, rejectedReason = '-' }) {
+  if (!userId) {
+    logToSheet("Error: Cannot send Slack message - userID is null or empty");
+    return;
+  }
+  
+  const isApproved = status === 'Approved';
+  const statusText = isApproved ? '*✅ Approved*' : '*❌ Rejected*';
+  
+  const rejectBlock = status === 'Rejected' && rejectedReason !== '-' ? [{
+    type: 'section',
+    fields: [{ type: 'mrkdwn', text: `*💁🏻 Reject because:*\n${rejectedReason}` }]
+  }] : [];
+  
+  const message = {
+    channel: userId,
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `👋 Hello ${userName}, Your leave request has been ${status}.`,
+          emoji: true
+        }
+      },
+      { type: "divider" },
+      {
+        type: "section",
+        fields: [
+          { type: "mrkdwn", text: `*📌 Leave Type :*\n         ${leaveType}` },
+          { type: "mrkdwn", text: `*📊 Status :*\n         ${statusText}` }
+        ]
+      },
+      ...rejectBlock,
+      {
+        type: "section",
+        fields: [
+          { type: "mrkdwn", text: `*📅 From Date :*\n         ${fromDate}` },
+          { type: "mrkdwn", text: `*📅 To Date :*\n         ${toDate}` }
+        ]
+      },
+      {
+        type: "section",
+        fields: [
+          { type: "mrkdwn", text: `*👨🏻‍💼 Approver :*\n         ${managerEmail}` }
+        ]
+      }
+    ],
+  };
+  
+  sendSlackMessage(userId, message);
+}
+
+function sendSlackMessage(userId, message) {
+  logToSheet(`Preparing to send Slack message to user ID: ${userId}`);
+  
+  const options = {
+    method: "POST",
+    contentType: "application/json",
+    headers: {
+      Authorization: `Bearer ${SLACK.BOT_TOKEN}`,
+    },
+    payload: JSON.stringify(message),
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(SLACK.POST_MSG_URL, options);
+    const responseCode = response.getResponseCode();
+    
+    if (responseCode === 200) {
+      logToSheet(`Slack notification sent successfully to user ID ${userId}`);
+    } else {
+      logToSheet(`Failed to send Slack notification. Status code: ${responseCode}`);
+      logToSheet(`Response: ${response.getContentText()}`);
+    }
+  } catch(err) {
+    logToSheet(`Error sending Slack message: ${err.toString()}`);
+  }
 }
 
 function getSlackUserId(informedTo) {
@@ -134,10 +211,10 @@ function getSlackUserId(informedTo) {
     const options = {
       method: "get",
       headers: {
-        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+        Authorization: `Bearer ${SLACK.BOT_TOKEN}`,
       },
     };
-    const response = UrlFetchApp.fetch(`${USER_LIST_URL}`, options);
+    const response = UrlFetchApp.fetch(SLACK.USER_LIST_URL, options);
     const users = JSON.parse(response).members;
     const user = users.filter((u) => !u.deleted).find(u => u.real_name === informedTo);
     if (user) {
@@ -160,18 +237,14 @@ function getSlackUserIdByEmail(email) {
   }
   
   try {
-    const url = `${LOOK_UP_BY_EMAIL_URL}?email=${encodeURIComponent(email)}`;
-    logToSheet(`Looking up Slack user ID for email: ${email}`);
+    const url = `${SLACK.LOOKUP_BY_EMAIL_URL}?email=${encodeURIComponent(email)}`;
     
     const options = {
-      "method": "get",
-      "headers": {
-        "Authorization": "Bearer " + SLACK_BOT_TOKEN
+      method: "get",
+      headers: {
+        Authorization: `Bearer ${SLACK.BOT_TOKEN}`
       }
     };
-    
-    // Log the full URL being called (but mask the token in logs)
-    logToSheet(`API Call URL: ${url}`);
     
     const response = UrlFetchApp.fetch(url, options);
     const result = JSON.parse(response.getContentText());
@@ -185,9 +258,6 @@ function getSlackUserIdByEmail(email) {
     }
   } catch (err) {
     logToSheet(`Exception in getSlackUserIdByEmail: ${err.toString()}`);
-    
-    // Additional troubleshooting
-    logToSheet(`LOOK_UP_BY_EMAIL_URL value: ${LOOK_UP_BY_EMAIL_URL}`);
     return null;
   }
 }
@@ -197,130 +267,19 @@ function sendToSlackApp(message) {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify({
-      channel: SLACK_CHANNEL,
-      text: message, 
+      channel: SLACK.CHANNEL,
+      text: "New leave request notification", 
       blocks: message.blocks
     }),
     headers: {
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`
+      Authorization: `Bearer ${SLACK.BOT_TOKEN}`
     }
   };
 
   try {
-    UrlFetchApp.fetch(SLACK_WEBHOOK_URL, options);
+    UrlFetchApp.fetch(SLACK.WEBHOOK_URL, options);
     logToSheet('Slack notification sent successfully.');
   } catch (err) {
     logToSheet('Failed to send Slack notification: ' + err);
-  }
-}
-
-
-function sendLeaveResponseSlackMessage({
-  userName,
-  userId,
-  leaveType,
-  status,
-  fromDate,
-  toDate,
-  managerEmail,
-  rejectedReason = '-'
-}) {
-  if (!userId) {
-    logToSheet("Error: Cannot send Slack message - userID is null or empty");
-    return;
-  }
-
-  const isApproved = status === 'Approved';
-  const statusText = isApproved ? '*✅ Approved*' : '*❌ Rejected*';
-  
-  const message = {
-    channel: userId,
-    blocks: [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: `👋 Hello ${userName}, Your leave request has been ${status}.`,
-          emoji: true
-        }
-      },
-      { type: "divider" },
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*📌 Leave Type :*\n         ${leaveType}`
-          },
-          {
-            type: "mrkdwn",
-            text: `*📊 Status :*\n         ${statusText}`
-          }
-        ]
-      },
-
-      ...(status === 'Rejected' && rejectedReason !== '-' ? [{
-        type: 'section',
-        fields: [
-          {
-            type: 'mrkdwn',
-            text: `*💁🏻 Reject because:*\n${rejectedReason}`
-          }
-        ]
-      }] : []),
-
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*📅 From Date :*\n         ${fromDate}`
-          },
-          {
-            type: "mrkdwn",
-            text: `*📅 To Date :*\n         ${toDate}`
-          }
-        ]
-      },
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*👨🏻‍💼 Approver :*\n         ${managerEmail}`
-          }
-        ]
-      }
-    ],
-  };
-
-  logToSheet(`Preparing to send Slack message to user ID: ${userId}`);
-  const payload = JSON.stringify(message);
-  logToSheet(`Message payload: ${payload.substring(0, 200)}...`);
-
-  const options = {
-    method: "POST",
-    contentType: "application/json",
-    headers: {
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-    },
-    payload,
-  };
-
-  try {
-    const response = UrlFetchApp.fetch(POST_MSG_URL, options);
-    const responseCode = response.getResponseCode();
-    const responseText = response.getContentText();
-    
-    logToSheet(`Slack API response code: ${responseCode}`);
-    logToSheet(`Slack API response: ${responseText}`);
-    
-    if (responseCode === 200) {
-      logToSheet(`Slack notification sent successfully to user ID ${userId}`);
-    } else {
-      logToSheet(`Failed to send Slack notification. Status code: ${responseCode}`);
-    }
-  } catch(err) {
-    logToSheet(`Error sending Slack message: ${err.toString()}`);
   }
 }

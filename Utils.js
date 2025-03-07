@@ -1,11 +1,12 @@
+
+// Utils.gs
+
 function formatDate(date) {
-  const formattedDate = Utilities.formatDate(new Date(date), Session.getScriptTimeZone(), 'yyyy/MM/dd');
-  return formattedDate;
+  return Utilities.formatDate(new Date(date), Session.getScriptTimeZone(), 'yyyy/MM/dd');
 }
 
 function formatTimestamp(timestamp) {
-  const formattedTimestamp = Utilities.formatDate(new Date(timestamp), Session.getScriptTimeZone(), 'M/d/yyyy HH:mm:ss');
-  return formattedTimestamp;
+  return Utilities.formatDate(new Date(timestamp), Session.getScriptTimeZone(), 'M/d/yyyy HH:mm:ss');
 }
 
 function logToSheet(message) {
@@ -14,5 +15,5 @@ function logToSheet(message) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("Logs");
     sheet.appendRow(["Timestamp", "Log Message"]);
   }
-  sheet.appendRow([new Date(), message]); // Log the message with timestamp
+  sheet.appendRow([new Date(), message]);
 }
